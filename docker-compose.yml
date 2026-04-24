@@ -1,0 +1,38 @@
+services:
+
+  # ---------------------------------------------------------------------------
+  # FastAPI application
+  # ---------------------------------------------------------------------------
+  app:
+    build: .
+    ports:
+      - "8000:8000"   # direct access for development / debugging
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Varnish — simulates the CDN layer
+  #
+  # Traffic flow:
+  #   client → :8080 (Varnish) → :8000 (FastAPI app)
+  #
+  # Caching behaviour driven by the app's Cache-Control response header:
+  #   s-maxage=60                → Varnish TTL (beresp.ttl)
+  #   stale-while-revalidate=... → Varnish grace (beresp.grace)
+  # ---------------------------------------------------------------------------
+  varnish:
+    image: varnish:7
+    ports:
+      - "8080:8080"   # CDN-fronted access
+    volumes:
+      - ./varnish/default.vcl:/etc/varnish/default.vcl:ro
+    environment:
+      VARNISH_SIZE: 256m
+      VARNISH_HTTP_PORT: 8080   # avoid port 80 — rootless Podman can't bind ports < 1024
+    depends_on:
+      app:
+        condition: service_healthy
