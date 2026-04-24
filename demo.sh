@@ -29,6 +29,18 @@ run() {
     echo
 }
 
+run_filtered() {
+    # Like run but only prints lines matching a grep pattern.
+    # Usage: run_filtered <pattern> <curl args...>
+    local pattern="$1"; shift
+    echo -e "${DIM}    \$ $*${RESET}"
+    local out
+    out=$("$@" -w "\nTotal: %{time_total}s\n" 2>&1)
+    echo "$out" | grep -E "$pattern" | sed 's/^/    /' || true
+    echo "$out" | grep 'Total:' | sed 's/^/    /'
+    echo
+}
+
 echo -e "\n${BOLD}cdn-request-demo — end-to-end scenario walkthrough${RESET}"
 echo -e "${DIM}Target: ${BASE}${RESET}"
 
@@ -139,9 +151,7 @@ label "PURGE widget from Varnish → 200 (or 405 if hitting the app directly)"
 run curl -si -X PURGE "$BASE/items/widget"
 
 label "Next GET after Varnish purge is a MISS again"
-echo -e "${DIM}    \$ curl -si $BASE/items/widget  (headers only)${RESET}"
-curl -si "$BASE/items/widget" 2>&1 | grep -E 'x-cache|etag|HTTP' | sed 's/^/    /' || true
-echo
+run_filtered 'x-cache|etag|HTTP' curl -si "$BASE/items/widget"
 
 # ── 8. full lifecycle ─────────────────────────────────────────────────────
 header "8. Full caching lifecycle"
@@ -160,9 +170,8 @@ ETAG=$(curl -si "$BASE/items/widget" | grep -i '^etag:' | tr -d '\r' | awk '{pri
 echo -e "    ETag: ${BOLD}${ETAG}${RESET}\n"
 
 label "Step 2 — Varnish HIT, instant"
-echo -e "${DIM}    \$ curl -si $BASE/items/widget  (X-Cache header)${RESET}"
-curl -si "$BASE/items/widget" 2>&1 | grep -i 'x-cache' | sed 's/^/    /' || echo "    (X-Cache not present — running without Varnish)"
-echo
+run_filtered 'x-cache|X-Cache not present' curl -si "$BASE/items/widget" || \
+    echo "    (X-Cache not present — running without Varnish)"
 
 label "Step 3 — Simulate CDN revalidation (If-None-Match) → 304, no body"
 run curl -si -H "If-None-Match: $ETAG" "$BASE/items/widget"
@@ -178,8 +187,6 @@ label "Step 5 — Purge Varnish so it picks up the new version immediately"
 run curl -si -X PURGE "$BASE/items/widget"
 
 label "Step 6 — Next GET is a MISS with fresh data and new ETag"
-echo -e "${DIM}    \$ curl -si $BASE/items/widget  (headers + body)${RESET}"
-curl -si "$BASE/items/widget" 2>&1 | grep -E 'x-cache|etag|HTTP|\{' | sed 's/^/    /' || true
-echo
+run_filtered 'x-cache|etag|HTTP|\{' curl -si "$BASE/items/widget"
 
 echo -e "\n${GREEN}${BOLD}All scenarios complete.${RESET}\n"
