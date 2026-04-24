@@ -138,7 +138,28 @@ curl -si -X PUT \
 
 ---
 
-### Cache purge
+### DELETE an item
+
+```bash
+# Capture current ETag
+ETAG=$(curl -si $BASE/items/gadget | grep -i '^etag:' | tr -d '\r' | awk '{print $2}')
+
+# Delete with correct ETag → 204, item and cache entry removed
+curl -si -X DELETE -H "If-Match: $ETAG" $BASE/items/gadget
+
+# Delete with wrong ETag → 412 Precondition Failed
+curl -si -X DELETE -H 'If-Match: "wrongetag"' $BASE/items/widget
+
+# Delete without If-Match (no concurrency check) → 204
+curl -si -X DELETE $BASE/items/widget
+
+# Deleted item → 404
+curl -si $BASE/items/gadget
+```
+
+---
+
+
 
 ```bash
 # Purge a single item from the app's in-memory ETag cache → 204

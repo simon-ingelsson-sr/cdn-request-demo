@@ -127,8 +127,32 @@ run curl -si -X PUT \
     -d '{"price": 9.99}' \
     "$BASE/items/widget"
 
-# ── 6. app cache purge ────────────────────────────────────────────────────
-header "6. App in-memory cache purge"
+# ── 6. DELETE an item ─────────────────────────────────────────────────────
+header "6. DELETE an item"
+
+comment "Re-add gadget so we have something to delete"
+_GADGET_ETAG=$(curl -si "$BASE/items/gadget" 2>/dev/null | grep -i '^etag:' | tr -d '\r' | awk '{print $2}')
+if [[ -z "$_GADGET_ETAG" ]]; then
+    warn "gadget not found — skipping DELETE demo (already deleted?)"
+else
+    echo -e "    Gadget ETag: ${BOLD}${_GADGET_ETAG}${RESET}\n"
+
+    label "DELETE with wrong ETag → 412 Precondition Failed"
+    run curl -si -X DELETE \
+        -H 'If-Match: "wrongetag"' \
+        "$BASE/items/gadget"
+
+    label "DELETE with correct ETag → 204, item and cache entry removed"
+    run curl -si -X DELETE \
+        -H "If-Match: $_GADGET_ETAG" \
+        "$BASE/items/gadget"
+
+    label "GET deleted item → 404"
+    run curl -si "$BASE/items/gadget"
+fi
+
+# ── 7. app cache purge ────────────────────────────────────────────────────
+header "7. App in-memory cache purge"
 
 comment "Prime the cache first"
 curl -s "$BASE/items/gadget" > /dev/null
@@ -142,8 +166,8 @@ run curl -si "$BASE/items/gadget"
 label "Purging an item not in cache is a no-op → still 204"
 run curl -si -X DELETE "$BASE/cache/items/ghost"
 
-# ── 7. Varnish PURGE ──────────────────────────────────────────────────────
-header "7. Varnish cache purge (PURGE method, trusted IPs only)"
+# ── 8. Varnish PURGE ──────────────────────────────────────────────────────
+header "8. Varnish cache purge (PURGE method, trusted IPs only)"
 
 comment "This is only accepted from within the Docker/Podman network or localhost"
 comment "Has no effect when running against the app directly (BASE=:8000)"
@@ -153,8 +177,8 @@ run curl -si -X PURGE "$BASE/items/widget"
 label "Next GET after Varnish purge is a MISS again"
 run_filtered 'x-cache|etag|HTTP' curl -si "$BASE/items/widget"
 
-# ── 8. full lifecycle ─────────────────────────────────────────────────────
-header "8. Full caching lifecycle"
+# ── 9. full lifecycle ─────────────────────────────────────────────────────
+header "9. Full caching lifecycle"
 
 comment "Reset widget to a known state"
 curl -s -X PUT -H 'Content-Type: application/json' \

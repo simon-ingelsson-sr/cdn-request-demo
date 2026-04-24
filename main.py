@@ -198,6 +198,30 @@ def update_item(item_id: str, request: Request, body: dict):
     })
 
 
+@app.delete("/items/{item_id}", tags=["items"], status_code=204)
+def delete_item(item_id: str, request: Request):
+    """
+    Delete an item with optimistic-concurrency via ``If-Match``.
+
+    - If the client sends ``If-Match`` that does *not* match the current ETag → 412 Precondition Failed.
+    - On success the item is removed from the DB and the cache entry is purged.
+    - Returns 204 No Content.
+    """
+    entry = _load_item(item_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Item '{item_id}' not found")
+
+    if_match = request.headers.get("if-match")
+    if if_match and if_match != entry.etag:
+        raise HTTPException(
+            status_code=412,
+            detail="Precondition Failed — ETag mismatch; fetch the latest version first",
+        )
+
+    del _ITEMS[item_id]
+    _cache.purge(item_id)
+
+
 # ---------------------------------------------------------------------------
 # Cache management
 # ---------------------------------------------------------------------------
