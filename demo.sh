@@ -23,15 +23,9 @@ ok()      { echo -e "${GREEN}    ✓ $*${RESET}"; }
 warn()    { echo -e "${YELLOW}    ! $*${RESET}"; }
 
 run() {
-    # Print the command, execute it, indent the output
     echo -e "${DIM}    \$ $*${RESET}"
-    "$@" 2>&1 | sed 's/^/    /'
-    echo
-}
-
-timed_run() {
-    echo -e "${DIM}    \$ $*${RESET}"
-    { time "$@"; } 2>&1 | sed 's/^/    /'
+    # Inject -w so curl appends the total request time after the response body
+    "$@" -w "\nTotal: %{time_total}s\n" 2>&1 | sed 's/^/    /'
     echo
 }
 
@@ -67,10 +61,10 @@ run curl -si "$BASE/healthz/ready"
 header "2. GET an item"
 
 label "First request — Varnish MISS, app cache MISS (expect ~5 s due to simulated DB latency)"
-timed_run curl -si "$BASE/items/widget"
+run curl -si "$BASE/items/widget"
 
 label "Second request — Varnish HIT (X-Cache: HIT, instant)"
-timed_run curl -si "$BASE/items/widget"
+run curl -si "$BASE/items/widget"
 
 label "Non-existent item → 404"
 run curl -si "$BASE/items/ghost"
@@ -131,7 +125,7 @@ label "Purge gadget from app cache → 204"
 run curl -si -X DELETE "$BASE/cache/items/gadget"
 
 label "Next GET is a cache miss again (expect ~5 s DB delay)"
-timed_run curl -si "$BASE/items/gadget"
+run curl -si "$BASE/items/gadget"
 
 label "Purging an item not in cache is a no-op → still 204"
 run curl -si -X DELETE "$BASE/cache/items/ghost"
@@ -160,7 +154,7 @@ curl -si -X PURGE "$BASE/items/widget" > /dev/null
 curl -si -X DELETE "$BASE/cache/items/widget" > /dev/null
 
 label "Step 1 — cold start (Varnish MISS + app cache MISS, slow)"
-timed_run curl -si "$BASE/items/widget"
+run curl -si "$BASE/items/widget"
 
 ETAG=$(curl -si "$BASE/items/widget" | grep -i '^etag:' | tr -d '\r' | awk '{print $2}')
 echo -e "    ETag: ${BOLD}${ETAG}${RESET}\n"
